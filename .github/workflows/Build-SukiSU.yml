@@ -136,7 +136,7 @@ jobs:
 
       - name: 安装构建依赖 (如果需要)
         # 即使缓存命中，也运行 apt-get update
-        run
+        run: |
           echo "更新软件包列表..."
           sudo apt-get update
           echo "安装必需的软件包 (apt)..."
