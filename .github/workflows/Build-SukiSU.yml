@@ -136,7 +136,7 @@ jobs:
 
       - name: 安装构建依赖 (如果需要)
         # 即使缓存命中，也运行 apt-get update
-        run: |
+        run
           echo "更新软件包列表..."
           sudo apt-get update
           echo "安装必需的软件包 (apt)..."
@@ -146,14 +146,15 @@ jobs:
 
       - name: 安装 repo 工具 (如果需要)
         # 检查 repo 是否已存在，避免重复下载
-        if ! command -v repo &> /dev/null; then
-          echo "安装 repo 工具..."
-          curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
-          chmod a+x ~/repo
-          sudo mv ~/repo /usr/local/bin/repo
-        else
-          echo "Repo 工具已存在。"
-        fi
+        run: |
+          if ! command -v repo &> /dev/null; then
+            echo "安装 repo 工具..."
+            curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
+            chmod a+x ~/repo
+            sudo mv ~/repo /usr/local/bin/repo
+          else
+            echo "Repo 工具已存在。"
+          fi
 
       # --------------------------------------------------
       # 步骤 4: 缓存与同步内核源码
