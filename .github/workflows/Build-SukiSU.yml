@@ -206,12 +206,13 @@ jobs:
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV # 将版本号写入环境变量
           echo "官方 KernelSU 集成完成。"
 
-      # 步骤10：应用 SUSFS 补丁
+# 步骤10：应用 SUSFS 补丁
       - name: 10. 应用 SUSFS 补丁
         # 仅当选择 SukiSU、启用 SUSFS 且集成了 KSU 时执行
         if: ${{ github.event.inputs.kernelsu_variant == 'SukiSU' && github.event.inputs.SUSFS_ENABLED == 'true' && github.event.inputs.kernelsu_version != 'without ksu' }}
         run: |
           set -ex # 出错时立即退出
+          # 进入工作区目录
           cd ${{ env.KERNEL_WORKSPACE }}
           echo "正在克隆 SUSFS 和相关补丁仓库..."
           # 克隆 SUSFS 核心代码仓库
@@ -219,16 +220,19 @@ jobs:
           # 克隆包含其他补丁的仓库
           git clone https://github.com/ShirkNeko/SukiSU_patch.git --depth=1 || { echo "克隆 SukiSU_patch 失败!"; exit 1; }
 
-          cd ${{ env.KERNEL_PLATFORM_DIR }}
+          # !! 修复：从当前目录 (kernel_workspace) 进入 kernel_platform 子目录 !!
+          cd kernel_platform
           echo "正在复制 SUSFS 文件到内核源码树..."
           # 复制 SUSFS 核心补丁和源码文件
+          # 使用 ../ 指向上层目录 (kernel_workspace) 中的克隆仓库
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
 
           echo "正在给内核 common 目录打 SUSFS 主补丁..."
+          # 进入 common 子目录准备打补丁
           cd ./common
-          # 应用 SUSFS 主补丁，忽略可能已应用的错误
+          # 应用已复制到当前目录 (common) 的补丁文件
           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
           echo "SUSFS 主补丁应用完成。"
 
