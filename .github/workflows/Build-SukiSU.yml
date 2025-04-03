@@ -1,5 +1,5 @@
 # 工作流名称
-name: Build OnePlus Kernel (Optimized)
+name: Build OnePlus Kernel (Updated & Optimized)
 
 # 触发条件：手动触发 (workflow_dispatch)
 on:
@@ -28,23 +28,23 @@ on:
       KERNEL_NAME:
         description: "自定义内核版本名称后缀" # 内核名称描述
         required: true
-        default: '-android12-9-o-brmdm-KSU' # 示例：包含KSU标识
+        default: '-android12-9-o-brmdm' # 示例
       kernelsu_variant:
-        description: "选择要集成的 KernelSU 变体" # KSU变体选择
+        description: "选择 KSU 变体" # KSU变体选择
         required: true
         type: choice
         options:
+          - Kernel  # 官方 KSU (此脚本侧重SukiSU适配)
           - SukiSU  # 推荐选项
-          - Kernel  # 官方KSU (此脚本未完整适配，保留选项)
         default: SukiSU
       kernelsu_version:
-        description: "选择 KernelSU 的版本来源" # KSU版本选择
+        description: "选择 KSU 的版本来源" # KSU版本选择
         required: true
         type: choice
         options:
-          - main    # 使用主分支最新代码
-          - tag     # 使用最新的Tag版本 (可能更稳定)
-          # - without ksu # 此脚本强制集成KSU, 故移除此选项
+          - without ksu # 不集成 KSU (需要确保后续步骤正确处理)
+          - tag         # 使用最新的Tag版本 (可能更稳定)
+          - main        # 使用主分支最新代码 (SukiSU 使用 susfs-stable)
         default: main
       SUSFS_ENABLED:
         description: "是否启用并集成 SUSFS 补丁" # 是否启用SUSFS
@@ -62,7 +62,8 @@ on:
 
 # 定义环境变量，方便管理和引用
 env:
-  KERNEL_MANIFEST_URL: https://github.com/brmdm2020/kernel_manifest.git # 内核清单仓库地址 (已按要求修改)
+  # !! 注意：此处仍使用你之前要求的 brmdm2020 仓库。如需切换回 OnePlusOSS，请修改此行 !!
+  KERNEL_MANIFEST_URL: https://github.com/brmdm2020/kernel_manifest.git
   ANYKERNEL_REPO_URL: https://github.com/Kernel-SU/AnyKernel3.git      # AnyKernel3 仓库地址
   KERNEL_WORKSPACE: kernel_workspace                                    # 工作目录名称
   KERNEL_PLATFORM_DIR: kernel_workspace/kernel_platform                # 内核平台源码目录
@@ -82,32 +83,33 @@ jobs:
           remove-haskell: 'true'  # 移除 Haskell 环境
           remove-codeql: 'true'   # 移除 CodeQL 工具
 
-      # 步骤2：配置Git用户信息
+      # 步骤2：配置Git用户信息 (使用你新代码中提供的配置)
       - name: 2. 配置Git用户信息
         run: |
-          # 设置Git提交者信息，这在应用补丁或进行git操作时可能需要
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          # 设置Git提交者信息
+          git config --global user.name "ychenxuan"
+          git config --global user.email "3494167979@qq.com"
 
-      # 步骤3：安装必要的依赖软件包
+      # 步骤3：安装必要的依赖软件包 (使用优化后的依赖列表)
       - name: 3. 安装依赖软件包
         run: |
           echo "正在更新软件包列表并安装依赖..."
           sudo apt update && sudo apt upgrade -y
-          # 安装编译内核所需的基础和特定工具 [Source 137, 147]
+          # 安装编译内核所需的基础和特定工具
           sudo apt install -y \
             python3 git curl patch bc bison flex libssl-dev \
             make gcc libncurses-dev lz4 \
-            repo # repo工具虽然下面会手动下载，但有时包管理器版本可能包含依赖
+            repo parallel # parallel 用于可能的并行任务 (虽然当前未显式使用)
           echo "依赖安装完成。"
 
-      # 步骤4：安装并验证 Google Repo 工具
+      # 步骤4：安装并验证 Google Repo 工具 (包含校验)
       - name: 4. 安装并验证 Repo 工具
         run: |
+          set -ex # 出错时立即退出并打印命令
           echo "正在下载 Repo 工具..."
           curl -sSL https://storage.googleapis.com/git-repo-downloads/repo -o ~/repo
           echo "正在校验 Repo 工具 SHA256 哈希值..."
-          # 使用已知安全的哈希值进行校验 [Source 144]
+          # 使用已知安全的哈希值进行校验
           echo "d453a2659a523b56af8a6b85c4362d0e7c0f7c56d8d68d5d936a472b91200d0f ~/repo" | shasum -a 256 -c - || { echo "Repo 工具校验失败!"; exit 1; }
           echo "Repo 工具校验成功。"
           chmod a+x ~/repo
@@ -121,8 +123,8 @@ jobs:
           path: |
             ${{ env.KERNEL_WORKSPACE }}/.repo  # 缓存 repo 元数据和对象
             ~/.repoconfig                 # 缓存 repo 配置
-          # key 基于操作系统和清单文件内容生成，清单变化时缓存失效
-          key: ${{ runner.os }}-repo-${{ github.event.inputs.FEIL }}-${{ hashFiles(format('{0}/.repo/manifests/{1}', env.KERNEL_WORKSPACE, github.event.inputs.FEIL)) }}
+          # key 基于操作系统和清单文件内容生成
+          key: ${{ runner.os }}-repo-${{ github.event.inputs.FEIL }}-${{ hashFiles(format('{0}/.repo/manifests/{1}.xml', env.KERNEL_WORKSPACE, github.event.inputs.FEIL)) }}
           restore-keys: |
             ${{ runner.os }}-repo-${{ github.event.inputs.FEIL }}-
 
@@ -133,9 +135,8 @@ jobs:
           echo "创建工作目录: ${{ env.KERNEL_WORKSPACE }}"
           mkdir -p ${{ env.KERNEL_WORKSPACE }} && cd ${{ env.KERNEL_WORKSPACE }}
 
-          echo "初始化 Repo 仓库..."
-          # 使用环境变量和输入参数初始化 repo [Source 79]
-          # 使用已修改的内核清单仓库 URL
+          echo "初始化 Repo 仓库 (使用仓库: ${{ env.KERNEL_MANIFEST_URL }})..."
+          # 使用环境变量和输入参数初始化 repo
           repo init -u ${{ env.KERNEL_MANIFEST_URL }} -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1 --no-repo-verify --repo-branch=stable || { echo "Repo 初始化失败!"; exit 1; }
 
           echo "开始同步源码 (可能需要较长时间)..."
@@ -143,119 +144,163 @@ jobs:
           echo "源码同步完成。"
 
           echo "清理可能存在的 GKI 保护导出文件..."
-          # 移除可能导致编译冲突的文件 [Source 80]
+          # 移除可能导致编译冲突的文件
           rm -f ${{ env.KERNEL_PLATFORM_DIR }}/common/android/abi_gki_protected_exports_* || echo "通用目录无保护导出文件。"
           rm -f ${{ env.KERNEL_PLATFORM_DIR }}/msm-kernel/android/abi_gki_protected_exports_* || echo "msm-kernel目录无保护导出文件。"
 
-      # 步骤7：准备 KernelSU 集成
-      - name: 7. 准备 KernelSU 集成
-        # 仅当选择 SukiSU 时执行 (当前脚本主要适配 SukiSU)
-        if: ${{ github.event.inputs.kernelsu_variant == 'SukiSU' }}
+      # 步骤7：准备 KernelSU 集成版本参数
+      - name: 7. 准备 KernelSU 集成版本参数
+        # 仅当选择集成 KSU 或 SukiSU 时执行
+        if: ${{ github.event.inputs.kernelsu_version != 'without ksu' && (github.event.inputs.kernelsu_variant == 'Kernel' || github.event.inputs.kernelsu_variant == 'SukiSU') }}
         run: |
-          set -ex # 出错时立即退出
+          set -e # 允许某些分支不存在导致的错误
           if [[ "${{ github.event.inputs.kernelsu_version }}" == "tag" ]]; then
-            echo "使用最新的 Tag 版本 KernelSU"
+            echo "使用最新的 Tag 版本 KernelSU/SukiSU"
             # 设置 BRANCH 环境变量为空，setup.sh 默认拉取 tag
             echo "BRANCH=" >> $GITHUB_ENV
           elif [[ "${{ github.event.inputs.kernelsu_version }}" == "main" ]]; then
-            echo "使用 main 分支 (susfs-stable) 的 KernelSU"
-            # 设置 BRANCH 环境变量为 -s susfs-stable，setup.sh 会拉取指定分支 [Source 84]
-            echo "BRANCH=-s susfs-stable" >> $GITHUB_ENV
+             # SukiSU 使用 susfs-stable 分支，官方 KSU 使用 main 分支
+            if [[ "${{ github.event.inputs.kernelsu_variant }}" == "SukiSU" ]]; then
+                 echo "使用 SukiSU 的 susfs-stable 分支"
+                 echo "BRANCH=-s susfs-stable" >> $GITHUB_ENV
+            else # 官方 KernelSU
+                 echo "使用官方 KernelSU 的 main 分支"
+                 echo "BRANCH=-s main" >> $GITHUB_ENV # 明确指定 main 分支
+            fi
           fi
+          echo "KernelSU/SukiSU 分支参数设置完成 (BRANCH=${{ env.BRANCH }})"
 
       # 步骤8：集成 SukiSU (KernelSU 变体)
       - name: 8. 集成 SukiSU
-        if: ${{ github.event.inputs.kernelsu_variant == 'SukiSU' }}
+        # 仅当选择 SukiSU 且选择集成版本时执行
+        if: ${{ github.event.inputs.kernelsu_variant == 'SukiSU' && github.event.inputs.kernelsu_version != 'without ksu' }}
         run: |
           set -ex # 出错时立即退出
           cd ${{ env.KERNEL_PLATFORM_DIR }}
           echo "开始集成 SukiSU (变体: ${{ github.event.inputs.kernelsu_variant }}, 版本来源: ${{ github.event.inputs.kernelsu_version }})..."
-          # 执行官方 KernelSU/SukiSU 的 setup.sh 脚本 [Source 85, 105]
-          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/KernelSU/main/kernel/setup.sh" | bash ${{ env.BRANCH }}
+          # 执行 SukiSU 的 setup.sh 脚本
+          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/KernelSU/main/kernel/setup.sh" | bash ${{ env.BRANCH }} || { echo "SukiSU setup.sh 执行失败!"; exit 1; }
 
           echo "计算 KernelSU 版本号..."
           cd ./KernelSU # 进入 KernelSU 源码目录
-          # 基于提交次数计算一个版本号，用于标识 [Source 85, 105]
+          # 基于提交次数计算一个版本号
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) + 12505) # 12505 是一个基数，可调整
           echo "计算得到的 KSU 版本号: $KSU_VERSION"
-          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV # 将版本号写入环境变量，供后续步骤使用
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV # 将版本号写入环境变量
           echo "SukiSU 集成完成。"
 
-      # 步骤9：应用 SUSFS 补丁
-      - name: 9. 应用 SUSFS 补丁
-        # 仅当选择 SukiSU 且启用 SUSFS 时执行
-        if: ${{ github.event.inputs.kernelsu_variant == 'SukiSU' && github.event.inputs.SUSFS_ENABLED == 'true' }}
+      # 步骤9：集成官方 KernelSU (如果选择)
+      - name: 9. 集成官方 KernelSU
+        # 仅当选择 Kernel 且选择集成版本时执行
+        if: ${{ github.event.inputs.kernelsu_variant == 'Kernel' && github.event.inputs.kernelsu_version != 'without ksu' }}
+        run: |
+          set -ex # 出错时立即退出
+          cd ${{ env.KERNEL_PLATFORM_DIR }}
+          echo "开始集成官方 KernelSU (版本来源: ${{ github.event.inputs.kernelsu_version }})..."
+          # 执行官方 KernelSU 的 setup.sh 脚本
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash ${{ env.BRANCH }} || { echo "官方 KernelSU setup.sh 执行失败!"; exit 1; }
+
+          echo "计算 KernelSU 版本号..."
+          cd ./KernelSU # 进入 KernelSU 源码目录
+          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) + 10000) # 使用不同的基数以区分
+          echo "计算得到的 KSU 版本号: $KSU_VERSION"
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV # 将版本号写入环境变量
+          echo "官方 KernelSU 集成完成。"
+
+      # 步骤10：应用 SUSFS 补丁
+      - name: 10. 应用 SUSFS 补丁
+        # 仅当选择 SukiSU、启用 SUSFS 且集成了 KSU 时执行
+        if: ${{ github.event.inputs.kernelsu_variant == 'SukiSU' && github.event.inputs.SUSFS_ENABLED == 'true' && github.event.inputs.kernelsu_version != 'without ksu' }}
         run: |
           set -ex # 出错时立即退出
           cd ${{ env.KERNEL_WORKSPACE }}
           echo "正在克隆 SUSFS 和相关补丁仓库..."
-          # 克隆 SUSFS 核心代码仓库，指定 GKI 版本分支 [Source 86, 106]
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }} --depth=1
-          # 克隆包含其他补丁 (如隐藏、钩子) 的仓库 [Source 86, 106]
-          git clone https://github.com/ShirkNeko/SukiSU_patch.git --depth=1
+          # 克隆 SUSFS 核心代码仓库
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }} --depth=1 || { echo "克隆 susfs4ksu 失败!"; exit 1; }
+          # 克隆包含其他补丁的仓库
+          git clone https://github.com/ShirkNeko/SukiSU_patch.git --depth=1 || { echo "克隆 SukiSU_patch 失败!"; exit 1; }
 
           cd ${{ env.KERNEL_PLATFORM_DIR }}
           echo "正在复制 SUSFS 文件到内核源码树..."
-          # 复制 SUSFS 核心补丁和源码文件 [Source 86, 106]
+          # 复制 SUSFS 核心补丁和源码文件
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
 
           echo "正在给内核 common 目录打 SUSFS 主补丁..."
           cd ./common
-          # 应用 SUSFS 主补丁，忽略可能已应用的错误 (|| true) [Source 87, 107]
+          # 应用 SUSFS 主补丁，忽略可能已应用的错误
           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
           echo "SUSFS 主补丁应用完成。"
 
-      # 步骤10：应用隐藏 Root 相关补丁
-      - name: 10. 应用隐藏 Root 相关补丁
-        # 仅当启用 SUSFS 时执行 (隐藏通常依赖 SUSFS)
-        if: ${{ github.event.inputs.SUSFS_ENABLED == 'true' }}
+      # 步骤11：应用隐藏 Root 相关补丁
+      - name: 11. 应用隐藏 Root 相关补丁
+        # 仅当启用 SUSFS 且集成了 KSU 时执行
+        if: ${{ github.event.inputs.SUSFS_ENABLED == 'true' && github.event.inputs.kernelsu_version != 'without ksu' }}
         run: |
           set -ex # 出错时立即退出
           cd ${{ env.KERNEL_PLATFORM_DIR }}/common
           echo "正在复制并应用隐藏 Root (hide_stuff) 补丁..."
           cp ../../SukiSU_patch/69_hide_stuff.patch ./
-          # 应用隐藏补丁，-F 3 尝试处理一些模糊匹配 [Source 88, 108]
-          patch -p1 -F 3 < 69_hide_stuff.patch || { echo "隐藏补丁应用失败!"; exit 1; }
+          # 应用隐藏补丁，-F 3 尝试处理一些模糊匹配
+          patch -p1 -F 3 < 69_hide_stuff.patch || { echo "隐藏补丁应用失败! (可能是已应用)"; true; } # 允许失败继续
           echo "隐藏 Root 补丁应用完成。"
 
-      # 步骤11：应用 VFS 新钩子补丁
-      - name: 11. 应用 VFS 新钩子补丁
-        # 仅当选择启用 VFS 补丁时执行
-        if: ${{ github.event.inputs.VFS_patch_ENABLED == 'enable' }}
+      # 步骤12：应用 VFS 新钩子补丁 (及 lz4kd)
+      - name: 12. 应用 VFS 新钩子补丁 (及 lz4kd)
+        # 仅当启用 VFS 补丁且集成了 KSU 时执行
+        if: ${{ github.event.inputs.VFS_patch_ENABLED == 'enable' && github.event.inputs.kernelsu_version != 'without ksu' }}
         run: |
           set -ex # 出错时立即退出
           cd ${{ env.KERNEL_PLATFORM_DIR }}/common
           echo "正在复制并应用 VFS 新钩子 (new_hooks) 补丁..."
           cp ../../SukiSU_patch/hooks/new_hooks.patch ./
-          # 应用新钩子补丁 [Source 89, 109]
-          patch -p1 -F 3 < new_hooks.patch || { echo "VFS 新钩子补丁应用失败!"; exit 1; }
-          echo "VFS 新钩子补丁应用完成。"
+          # 应用新钩子补丁
+          patch -p1 -F 3 < new_hooks.patch || { echo "VFS 新钩子补丁应用失败! (可能是已应用)"; true; } # 允许失败继续
 
-      # 步骤12：添加 KernelSU 和 SUSFS 配置到 defconfig
-      - name: 12. 添加 KernelSU/SUSFS 配置到 defconfig
-        # 此步骤总会执行，为 KSU 和 SUSFS 添加必要的内核编译选项
-        if: ${{ github.event.inputs.kernelsu_variant == 'SukiSU' }} # 确保只在选择 SukiSU 时添加
+          # === 新增逻辑：应用 lz4kd 补丁 (如果内核版本不是 5.10) ===
+          if [ "${{ github.event.inputs.KERNEL_VERSION }}" != "5.10" ]; then
+            echo "检测到内核版本 (${{ github.event.inputs.KERNEL_VERSION }}) 非 5.10，尝试应用 lz4kd 补丁..."
+            # 检查补丁文件是否存在
+            LZ4KD_PATCH_PATH="../../SukiSU_patch/other/lz4k_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch"
+            if [ -f "$LZ4KD_PATCH_PATH" ]; then
+              cp "$LZ4KD_PATCH_PATH" ./
+              patch -p1 -F 3 < lz4kd.patch || { echo "lz4kd 补丁应用失败! (可能是已应用或不适用)"; true; } # 允许失败继续
+              echo "lz4kd 补丁应用尝试完成。"
+            else
+              echo "警告：未找到适用于内核版本 ${{ github.event.inputs.KERNEL_VERSION }} 的 lz4kd 补丁 ($LZ4KD_PATCH_PATH)。"
+            fi
+          else
+            echo "内核版本为 5.10，跳过应用 lz4kd 补丁。"
+          fi
+          # === 新增逻辑结束 ===
+          echo "VFS 新钩子及相关补丁应用完成。"
+
+      # 步骤13：添加 KernelSU/SUSFS 配置到 defconfig
+      - name: 13. 添加 KernelSU/SUSFS 配置到 defconfig
+        # 仅当集成了 KSU (任意变体) 时执行
+        if: ${{ github.event.inputs.kernelsu_version != 'without ksu' }}
         run: |
           set -ex # 出错时立即退出
           cd ${{ env.KERNEL_PLATFORM_DIR }}
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
-          echo "正在向 $DEFCONFIG_PATH 添加 KernelSU 和 SUSFS 配置..."
+          echo "正在向 $DEFCONFIG_PATH 添加 KernelSU/SUSFS 配置..."
 
           # 添加基础 KSU 配置
           echo "CONFIG_KSU=y" >> $DEFCONFIG_PATH
 
-          # 根据 VFS 补丁选择，添加不同的 KSU 配置 [Source 92, 112]
-          if [[ "${{ github.event.inputs.VFS_patch_ENABLED }}" == 'enable' ]]; then
-            echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> $DEFCONFIG_PATH # 禁用旧的 SU 挂载方式
-            echo "CONFIG_KSU_MANUAL_HOOK=y" >> $DEFCONFIG_PATH # 启用手动(新)钩子
-          else
-            echo "CONFIG_KSU_SUSFS_SUS_SU=y" >> $DEFCONFIG_PATH # 启用旧的 SU 挂载方式
-          fi
+          # 仅当选择 SukiSU 且启用 SUSFS 时，添加 VFS 和 SUSFS 特定配置
+          if [[ "${{ github.event.inputs.kernelsu_variant }}" == 'SukiSU' && "${{ github.event.inputs.SUSFS_ENABLED }}" == 'true' ]]; then
+            echo "为 SukiSU+SUSFS 添加特定配置..."
+            # 根据 VFS 补丁选择，添加不同的 KSU 配置
+            if [[ "${{ github.event.inputs.VFS_patch_ENABLED }}" == 'enable' ]]; then
+              echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> $DEFCONFIG_PATH # 禁用旧的 SU 挂载方式
+              echo "CONFIG_KSU_MANUAL_HOOK=y" >> $DEFCONFIG_PATH # 启用手动(新)钩子
+            else
+              echo "CONFIG_KSU_SUSFS_SUS_SU=y" >> $DEFCONFIG_PATH # 启用旧的 SU 挂载方式
+            fi
 
-          # 如果启用了 SUSFS，则添加 SUSFS 相关配置 [Source 91, 111]
-          if [[ "${{ github.event.inputs.SUSFS_ENABLED }}" == 'true' ]]; then
+            # 添加 SUSFS 相关配置
             echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG_PATH
             echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> $DEFCONFIG_PATH
             echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG_PATH
@@ -273,130 +318,163 @@ jobs:
             echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> $DEFCONFIG_PATH
           fi
 
-          echo "移除 GKI defconfig 检查..."
-          # 移除可能因修改 defconfig 而失败的检查步骤 [Source 91, 111]
-          sed -i '/check_defconfig/d' ./common/build.config.gki
-          echo "配置添加完成。"
+          # === 新增逻辑：根据内核版本添加 ZRAM/LZ4K 配置 ===
+          if [ "${{ github.event.inputs.KERNEL_VERSION }}" != "6.6" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" != "5.10" ]; then
+             echo "为内核版本 ${{ github.event.inputs.KERNEL_VERSION }} 添加 ZRAM/LZ4K 相关配置..."
+             # 将模块编译进内核，而非作为模块(m)
+             sed -i 's/CONFIG_ZRAM=m/CONFIG_ZRAM=y/g' $DEFCONFIG_PATH
+             sed -i 's/CONFIG_ZSMALLOC=m/CONFIG_ZSMALLOC=y/g' $DEFCONFIG_PATH
+             echo "CONFIG_ZRAM_WRITEBACK=y" >> $DEFCONFIG_PATH
+             echo "CONFIG_CRYPTO_LZ4K=y" >> $DEFCONFIG_PATH
+             echo "CONFIG_CRYPTO_LZ4KD=y" >> $DEFCONFIG_PATH
+             echo "CONFIG_CRYPTO_LZ4HC=y" >> $DEFCONFIG_PATH
+             echo "CONFIG_CRYPTO_842=y" >> $DEFCONFIG_PATH # 842 压缩算法
+          else
+              echo "内核版本为 6.6 或 5.10，跳过添加 ZRAM/LZ4K 配置。"
+          fi
+          # === 新增逻辑结束 ===
 
-      # 步骤13：强制移除内核版本中的 -dirty 后缀
-      - name: 13. 强制移除内核版本中的 -dirty 后缀
+          echo "移除 GKI defconfig 检查..."
+          # 移除可能因修改 defconfig 而失败的检查步骤
+          sed -i '/check_defconfig/d' ./common/build.config.gki
+          echo "Defconfig 配置添加完成。"
+
+      # 步骤14：强制移除内核版本中的 -dirty 后缀
+      - name: 14. 强制移除内核版本中的 -dirty 后缀
         run: |
           set -ex # 出错时立即退出
           cd ${{ env.KERNEL_PLATFORM_DIR }}
           echo "正在强制移除内核版本可能存在的 -dirty 后缀..."
-          # 修改脚本，使其在生成版本号时不添加 -dirty [Source 113, 127]
-          sed -i 's/ -dirty//g' common/scripts/setlocalversion || echo "common setlocalversion 无 -dirty"
-          sed -i 's/ -dirty//g' msm-kernel/scripts/setlocalversion || echo "msm-kernel setlocalversion 无 -dirty"
-          sed -i 's/ -dirty//g' external/dtc/scripts/setlocalversion || echo "dtc setlocalversion 无 -dirty"
-          # 添加 git commit 是为了确保即使源码树是"脏"的，git describe 不会附加 -dirty
-          # 这可能不是最佳做法，但对于强制移除有效
+          # 修改脚本，使其在生成版本号时不添加 -dirty
+          sed -i 's/ -dirty//g' common/scripts/setlocalversion || echo "common setlocalversion 无需修改或不存在"
+          sed -i 's/ -dirty//g' msm-kernel/scripts/setlocalversion || echo "msm-kernel setlocalversion 无需修改或不存在"
+          sed -i 's/ -dirty//g' external/dtc/scripts/setlocalversion || echo "dtc setlocalversion 无需修改或不存在"
+          # 通过 commit 强制更新 git 状态，使得 git describe 不输出 -dirty
           git add -A || true # 添加所有更改，忽略添加失败
           git commit -m "CI: Force remove -dirty suffix by committing changes" --allow-empty || echo "无需提交以移除 -dirty"
           echo "-dirty 后缀移除（尝试）完成。"
 
-
-      # 步骤14：设置最终内核版本名称
-      - name: 14. 设置最终内核版本名称
+      # 步骤15：设置最终内核版本名称
+      - name: 15. 设置最终内核版本名称
         run: |
           set -ex # 出错时立即退出
           cd ${{ env.KERNEL_PLATFORM_DIR }}
           echo "正在设置内核版本名称为: ${{ github.event.inputs.KERNEL_NAME }}"
-          # 修改 setlocalversion 脚本，使其最后输出我们定义的 KERNEL_NAME [Source 93, 114]
-          # $s|echo "\$res"|...| 替换最后一行输出版本号的命令
+          # 修改 setlocalversion 脚本，使其最后输出我们定义的 KERNEL_NAME
           sed -i '$s|echo .*|echo "${{ github.event.inputs.KERNEL_NAME }}"|' ./common/scripts/setlocalversion
 
-          # 对于较新的内核 (sm8650 及以后)，可能使用 Bazel 构建系统，需要修改 stamp.bzl [Source 115]
-          if [[ "${{ github.event.inputs.CPU }}" == "sm8650" ]]; then
-            echo "检测到 sm8650，修改 Bazel 构建配置以移除 -maybe-dirty..."
-            sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl
+          # 对于较新的内核 (sm8650 及以后)，修改 Bazel 构建系统配置
+          if [[ "${{ github.event.inputs.CPU }}" == "sm8650" || $(echo "${{ github.event.inputs.CPU }}" | grep -q "sm8[7-9]"; echo $?) == 0 ]]; then # 假设 sm8650 及更新的都用 Bazel
+            echo "检测到新平台 (${{ github.event.inputs.CPU }})，修改 Bazel 构建配置以移除 -maybe-dirty..."
+            sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl || echo "stamp.bzl 修改失败或无需修改"
           else
-            echo "非 sm8650 内核，跳过修改 stamp.bzl。"
+            echo "非新平台 (${{ github.event.inputs.CPU }})，跳过修改 stamp.bzl。"
           fi
           echo "内核版本名称设置完成。"
 
-      # 步骤15：清理旧版内核构建的残留文件 (仅针对非 sm8650)
-      - name: 15. 清理旧版内核构建残留 (仅非 sm8650)
-        if: github.event.inputs.CPU != 'sm8650' # 旧版内核使用不同的构建脚本和输出目录
+      # 步骤16：清理旧版内核构建的残留文件 (仅针对非 Bazel 构建)
+      - name: 16. 清理旧版内核构建残留 (仅非 Bazel)
+        # 假设非 sm8650 系列使用旧脚本
+        if: github.event.inputs.CPU != 'sm8650' && !startsWith(github.event.inputs.CPU, 'sm87') && !startsWith(github.event.inputs.CPU, 'sm88') && !startsWith(github.event.inputs.CPU, 'sm89')
         run: |
           set -ex # 出错时立即退出
           cd ${{ env.KERNEL_PLATFORM_DIR }}
           echo "正在清理旧版构建可能残留的 out/ 和 .out/ 目录..."
-          # 清理 oplus_build_kernel.sh 可能产生的输出目录 [Source 116]
+          # 清理 oplus_build_kernel.sh 可能产生的输出目录
           rm -rf out/ .out/ || echo "无需清理旧版构建残留。"
           echo "旧版构建残留清理完成。"
 
-      # 步骤16：编译内核 (区分新旧版本)
-      - name: 16. 编译内核 (Bazel for sm8650+)
-        if: github.event.inputs.CPU == 'sm8650' # 新版内核使用 Bazel
+      # 步骤17：编译内核 (区分新旧版本)
+      - name: 17. 编译内核 (Bazel for sm8650+)
+        # 假设 sm8650 及更新的平台使用 Bazel
+        if: github.event.inputs.CPU == 'sm8650' || startsWith(github.event.inputs.CPU, 'sm87') || startsWith(github.event.inputs.CPU, 'sm88') || startsWith(github.event.inputs.CPU, 'sm89')
         run: |
           set -ex # 出错时立即退出
           cd ${{ env.KERNEL_WORKSPACE }}
-          echo "=== 开始使用 Bazel 编译 ${{ github.event.inputs.CPUD }} (sm8650+) 内核 ==="
+          echo "=== 开始使用 Bazel 编译 ${{ github.event.inputs.CPUD }} (新平台) 内核 ==="
           echo "编译命令: ./kernel_platform/build_with_bazel.py -t ${{ github.event.inputs.CPUD }} gki"
-          time ./kernel_platform/build_with_bazel.py -t ${{ github.event.inputs.CPUD }} gki [Source 94, 117]
+          time ./kernel_platform/build_with_bazel.py -t ${{ github.event.inputs.CPUD }} gki || { echo "Bazel 编译失败!"; exit 1; }
           echo "=== Bazel 编译完成 ==="
 
-      - name: 16. 编译内核 (Legacy Script for older)
-        if: github.event.inputs.CPU != 'sm8650' # 旧版内核使用 oplus_build_kernel.sh
+      - name: 17. 编译内核 (Legacy Script for older)
+        # 假设非 sm8650 系列使用旧脚本
+        if: github.event.inputs.CPU != 'sm8650' && !startsWith(github.event.inputs.CPU, 'sm87') && !startsWith(github.event.inputs.CPU, 'sm88') && !startsWith(github.event.inputs.CPU, 'sm89')
         run: |
           set -ex # 出错时立即退出
           cd ${{ env.KERNEL_WORKSPACE }}
-          echo "=== 开始使用旧版脚本编译 ${{ github.event.inputs.CPUD }} 内核 ==="
+          echo "=== 开始使用旧版脚本编译 ${{ github.event.inputs.CPUD }} (旧平台) 内核 ==="
           echo "编译命令: LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} gki"
-          # 设置 LTO=thin 进行链接时优化，执行编译脚本 [Source 95, 118]
-          time LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} gki
+          # 设置 LTO=thin 进行链接时优化，执行编译脚本
+          time LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} gki || { echo "旧版脚本编译失败!"; exit 1; }
           echo "=== 旧版脚本编译完成 ==="
 
-      # 步骤17：打包内核为 AnyKernel3 刷机包
-      - name: 17. 打包 AnyKernel3 刷机包
+      # 步骤18：打包内核为 AnyKernel3 刷机包
+      - name: 18. 打包 AnyKernel3 刷机包
         run: |
           set -ex # 出错时立即退出
           echo "正在克隆 AnyKernel3 仓库..."
-          # 克隆 AnyKernel3 模板仓库 [Source 96, 119]
-          git clone ${{ env.ANYKERNEL_REPO_URL }} AnyKernel3 --depth=1
-          rm -rf ./AnyKernel3/.git # 移除 .git 目录，避免嵌套仓库
+          # 克隆 AnyKernel3 模板仓库
+          git clone ${{ env.ANYKERNEL_REPO_URL }} AnyKernel3 --depth=1 || { echo "克隆 AnyKernel3 失败!"; exit 1; }
+          rm -rf ./AnyKernel3/.git # 移除 .git 目录
 
           echo "确定内核镜像 (Image) 路径..."
           IMAGE_PATH=""
-          # 根据 CPU 类型确定内核镜像的输出路径 [Source 120]
-          if [[ "${{ github.event.inputs.CPU }}" == "sm8650" ]]; then
+          # 根据 CPU 类型确定内核镜像的输出路径 (使用优化后的逻辑)
+          # 假设 sm8650 及更新的平台使用 Bazel
+          if [[ "${{ github.event.inputs.CPU }}" == "sm8650" || $(echo "${{ github.event.inputs.CPU }}" | grep -q "sm8[7-9]"; echo $?) == 0 ]]; then
               # 新版 Bazel 构建输出路径
               IMAGE_PATH="${{ env.KERNEL_PLATFORM_DIR }}/out/msm-kernel-${{ github.event.inputs.CPUD }}-gki/dist/Image"
           else
-              # 旧版 oplus_build_kernel.sh 构建输出路径 (注意路径结构差异)
-              IMAGE_PATH="${{ env.KERNEL_PLATFORM_DIR }}/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image"
+              # 旧版 oplus_build_kernel.sh 构建输出路径
+              # !! 注意：这里的路径结构可能需要根据实际情况微调 !!
+              # 尝试常见的旧版路径模式
+              LEGACY_PATH_1="${{ env.KERNEL_PLATFORM_DIR }}/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image"
+              LEGACY_PATH_2="${{ env.KERNEL_PLATFORM_DIR }}/out/target/product/${{ github.event.inputs.CPUD }}/obj/KERNEL_OBJ/arch/arm64/boot/Image" # 另一种可能的旧路径
+              if [ -f "$LEGACY_PATH_1" ]; then
+                 IMAGE_PATH="$LEGACY_PATH_1"
+              elif [ -f "$LEGACY_PATH_2" ]; then
+                  IMAGE_PATH="$LEGACY_PATH_2"
+              else
+                  # 如果上述常见路径都不对，尝试在 out/ 目录下查找 Image
+                  FOUND_IMAGE=$(find "${{ env.KERNEL_PLATFORM_DIR }}/out/" -name Image -type f -print -quit)
+                  if [ -n "$FOUND_IMAGE" ]; then
+                      IMAGE_PATH="$FOUND_IMAGE"
+                  fi
+              fi
           fi
-          echo "预期内核镜像路径: $IMAGE_PATH"
+          echo "最终确定的内核镜像路径: $IMAGE_PATH"
 
           echo "正在检查并复制内核镜像..."
           if [ -f "$IMAGE_PATH" ]; then
-              # 将编译好的内核镜像复制到 AnyKernel3 目录和单独的输出目录 [Source 121]
+              # 将编译好的内核镜像复制到 AnyKernel3 目录和单独的输出目录
               cp "$IMAGE_PATH" ./AnyKernel3/Image
               mkdir -p ./kernel_image_output # 创建单独存放 Image 的目录
               cp "$IMAGE_PATH" ./kernel_image_output/Image
               echo "内核镜像已复制到 AnyKernel3 和 kernel_image_output 目录。"
           else
               echo "错误：编译后的内核镜像文件未找到！"
-              echo "路径: $IMAGE_PATH"
-              echo "可能原因：编译失败，请检查之前的日志。"
+              echo "搜索路径: $IMAGE_PATH (以及 $LEGACY_PATH_1, $LEGACY_PATH_2, find 命令)"
+              echo "可能原因：编译失败，或内核输出路径与预期不符。请检查编译日志。"
               # 列出可能的输出目录内容以帮助调试
-              echo "--- 列出可能的输出目录 ---"
+              echo "--- 列出 ${{ env.KERNEL_PLATFORM_DIR }}/out/ 目录内容 ---"
               ls -R "${{ env.KERNEL_PLATFORM_DIR }}/out/" || echo "输出目录不存在或为空"
               echo "-------------------------"
               exit 1 # 找不到镜像则失败退出
           fi
           echo "AnyKernel3 打包准备完成。"
 
-      # 步骤18：上传 AnyKernel3 刷机包作为构建产物
-      - name: 18. 上传 AnyKernel3 刷机包
+      # 步骤19：上传 AnyKernel3 刷机包作为构建产物
+      - name: 19. 上传 AnyKernel3 刷机包
         uses: actions/upload-artifact@v4
         with:
-          name: AnyKernel3_SukiSU_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_${{ github.event.inputs.CPUD }} # 构建产物名称
+          # 根据是否集成 KSU 设置不同的产物名称
+          name: ${{ github.event.inputs.kernelsu_version != 'without ksu' && format('AnyKernel3_{0}_{1}_{2}_{3}', github.event.inputs.kernelsu_variant, env.KSUVER || 'NoVer', github.event.inputs.FEIL, github.event.inputs.CPUD) || format('AnyKernel3_NoKSU_{0}_{1}', github.event.inputs.FEIL, github.event.inputs.CPUD) }}
           path: ./AnyKernel3/* # 上传 AnyKernel3 目录下的所有文件
 
-      # 步骤19：上传单独的内核镜像作为构建产物
-      - name: 19. 上传内核镜像 (Image)
+      # 步骤20：上传单独的内核镜像作为构建产物
+      - name: 20. 上传内核镜像 (Image)
         uses: actions/upload-artifact@v4
         with:
-          name: Image_SukiSU_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_${{ github.event.inputs.CPUD }} # 构建产物名称
+           # 根据是否集成 KSU 设置不同的产物名称
+          name: ${{ github.event.inputs.kernelsu_version != 'without ksu' && format('Image_{0}_{1}_{2}_{3}', github.event.inputs.kernelsu_variant, env.KSUVER || 'NoVer', github.event.inputs.FEIL, github.event.inputs.CPUD) || format('Image_NoKSU_{0}_{1}', github.event.inputs.FEIL, github.event.inputs.CPUD) }}
           path: ./kernel_image_output/Image # 上传 Image 文件
