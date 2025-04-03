@@ -102,20 +102,22 @@ jobs:
             repo parallel # parallel 用于可能的并行任务 (虽然当前未显式使用)
           echo "依赖安装完成。"
 
-      # 步骤4：安装并验证 Google Repo 工具 (包含校验)
+# 步骤4：安装并验证 Google Repo 工具 (包含校验)
       - name: 4. 安装并验证 Repo 工具
         run: |
           set -ex # 出错时立即退出并打印命令
           echo "正在下载 Repo 工具..."
-          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo -o ~/repo
+          # 下载到 $HOME/repo
+          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo -o $HOME/repo
           echo "正在校验 Repo 工具 SHA256 哈希值..."
-          # 使用已知安全的哈希值进行校验
-          echo "d453a2659a523b56af8a6b85c4362d0e7c0f7c56d8d68d5d936a472b91200d0f ~/repo" | shasum -a 256 -c - || { echo "Repo 工具校验失败!"; exit 1; }
+          # 使用 $HOME/repo 进行校验，确保路径被正确扩展
+          echo "d453a2659a523b56af8a6b85c4362d0e7c0f7c56d8d68d5d936a472b91200d0f  $HOME/repo" | shasum -a 256 -c - || { echo "Repo 工具校验失败!"; exit 1; }
+          # 注意：校验和与文件名之间通常需要两个空格，虽然一个空格有时也能工作，但两个更标准。
           echo "Repo 工具校验成功。"
-          chmod a+x ~/repo
-          sudo mv ~/repo /usr/local/bin/repo
+          chmod a+x $HOME/repo
+          sudo mv $HOME/repo /usr/local/bin/repo
           echo "Repo 工具已安装至 /usr/local/bin/repo"
-
+          
       # 步骤5：缓存 Repo 仓库数据
       - name: 5. 缓存 Repo 仓库数据
         uses: actions/cache@v3
