@@ -117,15 +117,19 @@ jobs:
           
       # 步骤5：缓存 Repo 仓库数据
       - name: 5. 缓存 Repo 仓库数据
+        id: repo-cache # 给缓存步骤一个ID，方便后续可能需要引用缓存命中状态
         uses: actions/cache@v3
         with:
           path: |
             ${{ env.KERNEL_WORKSPACE }}/.repo  # 缓存 repo 元数据和对象
             ~/.repoconfig                 # 缓存 repo 配置
-          # key 基于操作系统和清单文件内容生成
-          key: ${{ runner.os }}-repo-${{ github.event.inputs.FEIL }}-${{ hashFiles(format('{0}/.repo/manifests/{1}.xml', env.KERNEL_WORKSPACE, github.event.inputs.FEIL)) }}
+          # key 基于操作系统、配置文件名和 manifest 仓库的 HEAD commit 生成
+          # hashFiles 会在文件不存在时返回空字符串，key 仍然有效
+          key: ${{ runner.os }}-repo-${{ github.event.inputs.FEIL }}-${{ hashFiles(format('{0}/.repo/manifests.git/HEAD', env.KERNEL_WORKSPACE)) }}
           restore-keys: |
+            # 提供一个更通用的恢复键，只基于配置文件名
             ${{ runner.os }}-repo-${{ github.event.inputs.FEIL }}-
+
 
       # 步骤6：初始化 Repo 并同步内核源码
       - name: 6. 初始化并同步内核源码
